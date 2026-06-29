@@ -1143,14 +1143,16 @@ function renderTaskQueue(queue) {
     elements.taskQueueCancel.disabled = active.cancelRequested === true;
     elements.taskQueueCancel.textContent = active.cancelRequested === true ? '停止中' : '停止任务';
     const progressText = active?.progress?.total
-      ? `进度 ${Number(active.progress.current || 0)}/${Number(active.progress.total || 0)}`
+      ? `${Number(active.progress.current || 0)}/${Number(active.progress.total || 0)}`
       : '';
+    const progressMessage = active?.progress?.message || '';
     elements.taskQueueMeta.textContent = [
       active?.paused ? '已暂停' : '',
-      progressText,
-      active?.progress?.message || '',
+      // 进度数字若已包含在 message 中（如「正在写入第 7/50 条」），则不再重复显示
+      progressText && !progressMessage.includes(progressText) ? `进度 ${progressText}` : '',
+      progressMessage,
       active.startedAt ? `开始 ${formatTime(active.startedAt)}` : '',
-      queued.length > 0 ? `后续 ${queued.map((item) => item.title || '任务').slice(0, 2).join('、')}${queued.length > 2 ? '...' : ''}` : '队列无等待任务',
+      queued.length > 0 ? `后续 ${queued.length} 个任务` : '',
     ].filter(Boolean).join(' · ');
     return;
   }

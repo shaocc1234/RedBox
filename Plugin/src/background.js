@@ -8149,6 +8149,232 @@ async function extractXhsNoteFeedByUrlFromCurrentPage(targetUrlInput, noteIdInpu
       if (currentId && currentId === noteId) {
   return data;
 }
+    }
+    return null;
+  }
+
+  function xB3TraceId() {
+    let value = '';
+    for (let index = 0; index < 16; index += 1) {
+      value += 'abcdef0123456789'.charAt(Math.floor(Math.random() * 16));
+    }
+    return value;
+  }
+
+  function traceId() {
+    const random = (bits) => Math.floor(Math.random() * (1 << bits));
+    const time = Date.now();
+    const part1 = (BigInt(time) << 23n) | BigInt(random(23));
+    const part2 = (BigInt(random(32)) << 32n) | BigInt(random(32));
+    return part1.toString(16).padStart(16, '0') + part2.toString(16).padStart(16, '0');
+  }
+
+  function crc32(value) {
+    const bytes = typeof value === 'string' ? Array.from(new TextEncoder().encode(value)) : Array.from(value || []);
+    let crc = -1;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let index = 0; index < 8; index += 1) {
+        crc = (crc & 1) ? ((crc >>> 1) ^ 0xedb88320) : (crc >>> 1);
+      }
+    }
+    return ((crc ^ -1) >>> 0);
+  }
+
+  function customBase64(inputBytes) {
+    const alphabet = 'ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5';
+    const bytes = Array.isArray(inputBytes) ? inputBytes : Array.from(inputBytes || []);
+    let output = '';
+    for (let index = 0; index < bytes.length; index += 3) {
+      const byte1 = bytes[index];
+      const byte2 = index + 1 < bytes.length ? bytes[index + 1] : NaN;
+      const byte3 = index + 2 < bytes.length ? bytes[index + 2] : NaN;
+      const triplet = (byte1 << 16) | ((Number.isNaN(byte2) ? 0 : byte2) << 8) | (Number.isNaN(byte3) ? 0 : byte3);
+      output += alphabet[(triplet >>> 18) & 63];
+      output += alphabet[(triplet >>> 12) & 63];
+      output += Number.isNaN(byte2) ? '=' : alphabet[(triplet >>> 6) & 63];
+      output += Number.isNaN(byte3) ? '=' : alphabet[triplet & 63];
+    }
+    return output;
+  }
+
+  function getCookie(name) {
+    const cookies = document.cookie.split(';');
+    for (const item of cookies) {
+      const cookie = item.trim();
+      if (cookie.startsWith(`${name}=`)) {
+        return cookie.slice(name.length + 1);
+      }
+    }
+    return '';
+  }
+
+  function getOS() {
+    const userAgent = window.navigator?.userAgent?.toLowerCase() || '';
+    if (userAgent.includes('android')) return 'Android';
+    if (userAgent.includes('iphone') || userAgent.includes('ipad') || userAgent.includes('ipod')) return 'iOS';
+    if (userAgent.includes('macintosh')) return 'Mac OS';
+    if (userAgent.includes('windows')) return 'Windows';
+    if (userAgent.includes('linux')) return 'Linux';
+    return 'PC';
+  }
+
+  function getPlatform(os) {
+    switch (os) {
+      case 'Windows':
+        return 0;
+      case 'Android':
+        return 2;
+      case 'iOS':
+        return 1;
+      case 'Mac OS':
+        return 3;
+      case 'Linux':
+        return 4;
+      default:
+        return 5;
+    }
+  }
+
+  function getXSCommon() {
+    const b1 = localStorage.getItem('b1') || '';
+    const b1b1 = localStorage.getItem('b1b1') || '1';
+    const os = getOS();
+    const payload = {
+      s0: getPlatform(os),
+      s1: '',
+      x0: b1b1,
+      x1: '4.2.6',
+      x2: os,
+      x3: 'xhs-pc-web',
+      x4: '4.83.1',
+      x5: getCookie('a1'),
+      x6: '',
+      x7: '',
+      x8: b1,
+      x9: crc32(`${b1}`),
+      x10: 0,
+      x11: 'normal',
+    };
+    return customBase64(new TextEncoder().encode(JSON.stringify(payload)));
+  }
+
+  async function seccoreSign(path, body) {
+    if (typeof window.mnsv2 !== 'function') {
+      throw new Error('当前页面缺少 window.mnsv2，无法生成小红书签名');
+    }
+    if (typeof window.md5 !== 'function') {
+      throw new Error('当前页面缺少 window.md5，无法生成小红书签名');
+    }
+    let content = path;
+    const tag = Object.prototype.toString.call(body);
+    if (tag === '[object Object]' || tag === '[object Array]') {
+      content += JSON.stringify(body);
+    } else if (typeof body === 'string') {
+      content += body;
+    }
+    const contentMd5 = window.md5(content);
+    const pathMd5 = window.md5(path);
+    const signature = await window.mnsv2(content, contentMd5, pathMd5);
+    const payload = {
+      x0: '4.2.6',
+      x1: 'xhs-pc-web',
+      x2: window.xsecplatform || 'PC',
+      x3: signature,
+      x4: body ? typeof body : '',
+    };
+    return `XYS_${customBase64(new TextEncoder().encode(JSON.stringify(payload)))}`;
+  }
+
+  async function requestFeed(target) {
+    const body = {
+      source_note_id: target.noteId,
+      image_formats: ['jpg', 'webp', 'avif'],
+      extra: { need_body_topic: '1' },
+      xsec_source: target.source || 'pc_user',
+      xsec_token: target.token,
+    };
+    const path = '/api/sns/web/v1/feed';
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json;charset=UTF-8',
+      'x-s': await seccoreSign(path, body),
+      'x-t': `${Date.now()}`,
+      'x-s-common': getXSCommon(),
+      'x-xray-traceid': traceId(),
+      'x-b3-traceid': xB3TraceId(),
+    };
+    console.debug('[redbox-plugin][debug][xhs-feed-request]', {
+      noteId: target.noteId,
+      source: target.source,
+      hasToken: Boolean(target.token),
+    });
+    const response = await window.fetch(`https://edith.xiaohongshu.com${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(`feed HTTP ${response.status}`);
+    }
+    const json = await response.json();
+    console.warn('[redbox-plugin][debug][xhs-feed-response-shape]', {
+      noteId: target.noteId,
+      status: response.status,
+      topLevelKeys: json && typeof json === 'object' ? Object.keys(json).slice(0, 20) : [],
+      success: json?.success,
+      code: json?.code,
+      msg: json?.msg,
+      hasData: Boolean(json?.data),
+      dataKeys: json?.data && typeof json.data === 'object' ? Object.keys(json.data).slice(0, 20) : [],
+      itemCount: Array.isArray(json?.data?.items) ? json.data.items.length : (Array.isArray(json?.items) ? json.items.length : 0),
+      firstItemKeys: Array.isArray(json?.data?.items) && json.data.items[0] && typeof json.data.items[0] === 'object'
+        ? Object.keys(json.data.items[0]).slice(0, 20)
+        : Array.isArray(json?.items) && json.items[0] && typeof json.items[0] === 'object'
+          ? Object.keys(json.items[0]).slice(0, 20)
+          : [],
+    });
+    if (!json) {
+      throw new Error('小红书 feed 接口返回为空');
+    }
+    if (json.success === false) {
+      throw new Error(normalizeText(json.msg) || '小红书 feed 接口请求失败');
+    }
+    return json.data || json.result?.data || json;
+  }
+
+  const target = parseTarget(targetUrlInput, noteIdInput);
+  if (!target.noteId) {
+    throw new Error('未识别到目标笔记 ID');
+  }
+  console.debug('[redbox-plugin][debug][xhs-feed-extract]', {
+    target,
+    location: location.href,
+  });
+
+  const cached = readFeedFromStore(target.noteId);
+  if (cached) {
+    console.debug('[redbox-plugin][debug][xhs-feed-extract-cache-hit]', {
+      noteId: target.noteId,
+    });
+    return cached;
+  }
+  if (!target.token) {
+    console.warn('[redbox-plugin][debug][xhs-feed-extract-token-missing]', {
+      target,
+      location: location.href,
+    });
+    throw new Error('目标笔记链接缺少 xsec_token，无法直接请求详情接口');
+  }
+  const feed = await requestFeed(target);
+  console.debug('[redbox-plugin][debug][xhs-feed-extract-success]', {
+    noteId: target.noteId,
+    mode: 'direct-fetch',
+  });
+  return feed;
+}
+
 
 async function fetchAccountsJson(path, init = {}) {
   const knowledgeEndpoint = await resolveKnowledgeApiEndpoint(false);
@@ -8431,231 +8657,6 @@ async function completeAccountImportSession(accountSession, summary = {}) {
       lastError: summary.lastError || null,
     }),
   });
-}
-    }
-    return null;
-  }
-
-  function xB3TraceId() {
-    let value = '';
-    for (let index = 0; index < 16; index += 1) {
-      value += 'abcdef0123456789'.charAt(Math.floor(Math.random() * 16));
-    }
-    return value;
-  }
-
-  function traceId() {
-    const random = (bits) => Math.floor(Math.random() * (1 << bits));
-    const time = Date.now();
-    const part1 = (BigInt(time) << 23n) | BigInt(random(23));
-    const part2 = (BigInt(random(32)) << 32n) | BigInt(random(32));
-    return part1.toString(16).padStart(16, '0') + part2.toString(16).padStart(16, '0');
-  }
-
-  function crc32(value) {
-    const bytes = typeof value === 'string' ? Array.from(new TextEncoder().encode(value)) : Array.from(value || []);
-    let crc = -1;
-    for (const byte of bytes) {
-      crc ^= byte;
-      for (let index = 0; index < 8; index += 1) {
-        crc = (crc & 1) ? ((crc >>> 1) ^ 0xedb88320) : (crc >>> 1);
-      }
-    }
-    return ((crc ^ -1) >>> 0);
-  }
-
-  function customBase64(inputBytes) {
-    const alphabet = 'ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5';
-    const bytes = Array.isArray(inputBytes) ? inputBytes : Array.from(inputBytes || []);
-    let output = '';
-    for (let index = 0; index < bytes.length; index += 3) {
-      const byte1 = bytes[index];
-      const byte2 = index + 1 < bytes.length ? bytes[index + 1] : NaN;
-      const byte3 = index + 2 < bytes.length ? bytes[index + 2] : NaN;
-      const triplet = (byte1 << 16) | ((Number.isNaN(byte2) ? 0 : byte2) << 8) | (Number.isNaN(byte3) ? 0 : byte3);
-      output += alphabet[(triplet >>> 18) & 63];
-      output += alphabet[(triplet >>> 12) & 63];
-      output += Number.isNaN(byte2) ? '=' : alphabet[(triplet >>> 6) & 63];
-      output += Number.isNaN(byte3) ? '=' : alphabet[triplet & 63];
-    }
-    return output;
-  }
-
-  function getCookie(name) {
-    const cookies = document.cookie.split(';');
-    for (const item of cookies) {
-      const cookie = item.trim();
-      if (cookie.startsWith(`${name}=`)) {
-        return cookie.slice(name.length + 1);
-      }
-    }
-    return '';
-  }
-
-  function getOS() {
-    const userAgent = window.navigator?.userAgent?.toLowerCase() || '';
-    if (userAgent.includes('android')) return 'Android';
-    if (userAgent.includes('iphone') || userAgent.includes('ipad') || userAgent.includes('ipod')) return 'iOS';
-    if (userAgent.includes('macintosh')) return 'Mac OS';
-    if (userAgent.includes('windows')) return 'Windows';
-    if (userAgent.includes('linux')) return 'Linux';
-    return 'PC';
-  }
-
-  function getPlatform(os) {
-    switch (os) {
-      case 'Windows':
-        return 0;
-      case 'Android':
-        return 2;
-      case 'iOS':
-        return 1;
-      case 'Mac OS':
-        return 3;
-      case 'Linux':
-        return 4;
-      default:
-        return 5;
-    }
-  }
-
-  function getXSCommon() {
-    const b1 = localStorage.getItem('b1') || '';
-    const b1b1 = localStorage.getItem('b1b1') || '1';
-    const os = getOS();
-    const payload = {
-      s0: getPlatform(os),
-      s1: '',
-      x0: b1b1,
-      x1: '4.2.6',
-      x2: os,
-      x3: 'xhs-pc-web',
-      x4: '4.83.1',
-      x5: getCookie('a1'),
-      x6: '',
-      x7: '',
-      x8: b1,
-      x9: crc32(`${b1}`),
-      x10: 0,
-      x11: 'normal',
-    };
-    return customBase64(new TextEncoder().encode(JSON.stringify(payload)));
-  }
-
-  async function seccoreSign(path, body) {
-    if (typeof window.mnsv2 !== 'function') {
-      throw new Error('当前页面缺少 window.mnsv2，无法生成小红书签名');
-    }
-    if (typeof window.md5 !== 'function') {
-      throw new Error('当前页面缺少 window.md5，无法生成小红书签名');
-    }
-    let content = path;
-    const tag = Object.prototype.toString.call(body);
-    if (tag === '[object Object]' || tag === '[object Array]') {
-      content += JSON.stringify(body);
-    } else if (typeof body === 'string') {
-      content += body;
-    }
-    const contentMd5 = window.md5(content);
-    const pathMd5 = window.md5(path);
-    const signature = await window.mnsv2(content, contentMd5, pathMd5);
-    const payload = {
-      x0: '4.2.6',
-      x1: 'xhs-pc-web',
-      x2: window.xsecplatform || 'PC',
-      x3: signature,
-      x4: body ? typeof body : '',
-    };
-    return `XYS_${customBase64(new TextEncoder().encode(JSON.stringify(payload)))}`;
-  }
-
-  async function requestFeed(target) {
-    const body = {
-      source_note_id: target.noteId,
-      image_formats: ['jpg', 'webp', 'avif'],
-      extra: { need_body_topic: '1' },
-      xsec_source: target.source || 'pc_user',
-      xsec_token: target.token,
-    };
-    const path = '/api/sns/web/v1/feed';
-    const headers = {
-      accept: 'application/json, text/plain, */*',
-      'content-type': 'application/json;charset=UTF-8',
-      'x-s': await seccoreSign(path, body),
-      'x-t': `${Date.now()}`,
-      'x-s-common': getXSCommon(),
-      'x-xray-traceid': traceId(),
-      'x-b3-traceid': xB3TraceId(),
-    };
-    console.debug('[redbox-plugin][debug][xhs-feed-request]', {
-      noteId: target.noteId,
-      source: target.source,
-      hasToken: Boolean(target.token),
-    });
-    const response = await window.fetch(`https://edith.xiaohongshu.com${path}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new Error(`feed HTTP ${response.status}`);
-    }
-    const json = await response.json();
-    console.warn('[redbox-plugin][debug][xhs-feed-response-shape]', {
-      noteId: target.noteId,
-      status: response.status,
-      topLevelKeys: json && typeof json === 'object' ? Object.keys(json).slice(0, 20) : [],
-      success: json?.success,
-      code: json?.code,
-      msg: json?.msg,
-      hasData: Boolean(json?.data),
-      dataKeys: json?.data && typeof json.data === 'object' ? Object.keys(json.data).slice(0, 20) : [],
-      itemCount: Array.isArray(json?.data?.items) ? json.data.items.length : (Array.isArray(json?.items) ? json.items.length : 0),
-      firstItemKeys: Array.isArray(json?.data?.items) && json.data.items[0] && typeof json.data.items[0] === 'object'
-        ? Object.keys(json.data.items[0]).slice(0, 20)
-        : Array.isArray(json?.items) && json.items[0] && typeof json.items[0] === 'object'
-          ? Object.keys(json.items[0]).slice(0, 20)
-          : [],
-    });
-    if (!json) {
-      throw new Error('小红书 feed 接口返回为空');
-    }
-    if (json.success === false) {
-      throw new Error(normalizeText(json.msg) || '小红书 feed 接口请求失败');
-    }
-    return json.data || json.result?.data || json;
-  }
-
-  const target = parseTarget(targetUrlInput, noteIdInput);
-  if (!target.noteId) {
-    throw new Error('未识别到目标笔记 ID');
-  }
-  console.debug('[redbox-plugin][debug][xhs-feed-extract]', {
-    target,
-    location: location.href,
-  });
-
-  const cached = readFeedFromStore(target.noteId);
-  if (cached) {
-    console.debug('[redbox-plugin][debug][xhs-feed-extract-cache-hit]', {
-      noteId: target.noteId,
-    });
-    return cached;
-  }
-  if (!target.token) {
-    console.warn('[redbox-plugin][debug][xhs-feed-extract-token-missing]', {
-      target,
-      location: location.href,
-    });
-    throw new Error('目标笔记链接缺少 xsec_token，无法直接请求详情接口');
-  }
-  const feed = await requestFeed(target);
-  console.debug('[redbox-plugin][debug][xhs-feed-extract-success]', {
-    noteId: target.noteId,
-    mode: 'direct-fetch',
-  });
-  return feed;
 }
 
 function extractXhsVisibleNoteLinksPayload() {
