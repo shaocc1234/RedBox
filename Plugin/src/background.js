@@ -5320,7 +5320,7 @@ async function collectXhsBloggerNotesViaApi(tabId, payload, options = {}) {
     await syncXhsTaskStep({
       current: results.length + failures.length,
       total: pendingNotes.length,
-      message: `API 模式采集中 ${index + 1}/${pendingNotes.length}`,
+      message: '采集中',
       mode: 'api',
     });
     let intervalMs = 0;
@@ -5331,7 +5331,7 @@ async function collectXhsBloggerNotesViaApi(tabId, payload, options = {}) {
       await syncXhsTaskStep({
         current: results.length + failures.length,
         total: pendingNotes.length,
-        message: `正在读取第 ${index + 1}/${pendingNotes.length} 条笔记`,
+        message: '读取笔记内容',
         mode: 'api',
       });
       const feedResult = await runExtraction(tabId, extractXhsNoteFeedByUrlFromCurrentPage, {
@@ -5342,7 +5342,7 @@ async function collectXhsBloggerNotesViaApi(tabId, payload, options = {}) {
       await syncXhsTaskStep({
         current: results.length + failures.length,
         total: pendingNotes.length,
-        message: `正在写入第 ${index + 1}/${pendingNotes.length} 条笔记`,
+        message: '写入知识库',
         mode: 'api',
       });
       const response = options.saveToRedBox !== false ? await postKnowledgeEntry(buildXhsEntry(entryPayload)) : null;
@@ -5390,7 +5390,7 @@ async function collectXhsBloggerNotesViaApi(tabId, payload, options = {}) {
       setActiveXhsTaskProgress({
         current: results.length + failures.length,
         total: pendingNotes.length,
-        message: `已采集 ${results.length + failures.length}/${pendingNotes.length}`,
+        message: '笔记已采集',
         mode: 'api',
       });
     } catch (error) {
@@ -5418,7 +5418,7 @@ async function collectXhsBloggerNotesViaApi(tabId, payload, options = {}) {
       setActiveXhsTaskProgress({
         current: results.length + failures.length,
         total: pendingNotes.length,
-        message: `已采集 ${results.length + failures.length}/${pendingNotes.length}`,
+        message: '笔记已采集',
         mode: 'api',
       });
     }
