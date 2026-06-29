@@ -740,7 +740,7 @@ function applyBloggerNotesSettings() {
 }
 
 function getBloggerNotesOptions() {
-  const limit = Math.max(1, Math.min(Number(elements.bloggerNotesLimit.value || 50), 200));
+  const limit = Math.max(1, Math.min(Number(elements.bloggerNotesLimit.value || 50), 9999));
   const intervalMaxSeconds = Math.max(3, Math.min(Number(elements.bloggerNotesIntervalMax.value || 6), 60));
   return {
     mode: elements.bloggerNotesApiMode.checked ? 'api' : 'tab',
@@ -884,7 +884,7 @@ function renderBloggerNotesPanel(nextContext) {
   applyBloggerNotesSettings();
   const active = nextContext?.queue?.active || null;
   const last = nextContext?.queue?.last || null;
-  const isRunning = active?.type === 'xhs:collect-blogger-notes';
+  const isRunning = active?.type === 'xhs:collect-blogger-notes' && active?.status === 'running';
   const paused = active?.paused === true;
   const progress = active?.progress || null;
   const disabled = !nextContext?.health?.success || Boolean(capturePendingAction) || isRunning;
@@ -912,6 +912,14 @@ function renderBloggerNotesPanel(nextContext) {
       label: '未链接，请打开Beav',
       meta: '',
       status: 'error',
+    });
+  } else if (last?.type === 'xhs:collect-blogger-notes' && (last?.status === 'completed' || last?.status === 'partial')) {
+    renderBloggerNotesProgress({
+      label: last?.status === 'completed' ? '采集完成' : '采集部分完成',
+      meta: last?.summary || `已完成 ${Number(last?.count || 0)} 条`,
+      status: last?.status === 'completed' ? 'success' : 'error',
+      current: Number(last?.count || 0),
+      total: Math.max(Number(last?.count || 0) + Number(last?.failed || 0), 1),
     });
   } else if (last?.type === 'xhs:collect-blogger-notes' && last?.status === 'cancelled') {
     renderBloggerNotesProgress({
@@ -1130,7 +1138,8 @@ function renderTaskQueue(queue) {
   const active = queue?.active || null;
   const queued = Array.isArray(queue?.queued) ? queue.queued : [];
   const last = queue?.last || null;
-  if (active) {
+  const activeIsRunning = active && active?.status === 'running';
+  if (activeIsRunning) {
     elements.taskQueueBadge.textContent = queued.length > 0 ? `执行中 · 排队 ${queued.length}` : '执行中';
     elements.taskQueueBadge.className = 'task-badge running';
     elements.taskCurrent.textContent = active.title || '小红书采集任务';
